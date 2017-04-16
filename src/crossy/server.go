@@ -16,9 +16,7 @@ import (
 	"github.com/gocraft/web"
 	"fmt"
 	"net/http"
-	"net/url"
 	"encoding/json"
-	"io/ioutil"
 )
 
 type User struct {
@@ -73,45 +71,14 @@ func (c *Context) PuzzleUploadGet(rw web.ResponseWriter, req *web.Request) {
     fmt.Fprint(rw, string(body))
 }
 
-func (c *Context) PuzzleGet(rw web.ResponseWriter, req *web.Request) {
-
-    rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-
-	id := req.PathParams["id"]
-
-	var Url *url.URL
-	Url, err := url.Parse("http://www.brainsonly.com/")
-	if err != nil {
-		panic("parse url failed")
-	}
-
-	Url.Path += "/servlets-crosswordtournament/crosstour2006"
-	parameters := url.Values{}
-	parameters.Add("uid", "<NAME>" + c.user.name + "</NAME>")
-	parameters.Add("pm", "get")
-	parameters.Add("pid", id)
-	Url.RawQuery = parameters.Encode()
-
-	resp, err := http.Get(Url.String())
-	if err != nil {
-		panic("get failed")
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic("could not read response")
-	}
-	fmt.Fprint(rw, string(body))
-}
-
 func main() {
-	router := web.New(Context{}).                   // Create your router
-		Middleware(web.LoggerMiddleware).           // Use some included middleware
-		Middleware(web.ShowErrorsMiddleware).       // ...
-		Middleware((*Context).Auth).       // Your own middleware!
-		Get("/puzzle/:id:\\d.*", (*Context).PuzzleGet).               // Add a route
-		Get("/puzzle/upload", (*Context).PuzzleUploadGet).               // Add a route
-		Post("/puzzle/", (*Context).PuzzleUpload)               // Add a route
-	http.ListenAndServe("localhost:4000", router)   // Start the server!
+	router := web.New(Context{}).
+		Middleware(web.LoggerMiddleware).
+		Middleware(web.ShowErrorsMiddleware).
+		Middleware((*Context).Auth).
+		//Get("/puzzle/:id:\\d.*", (*Context).PuzzleGet).
+		Get("/puzzle/upload", (*Context).PuzzleUploadGet).
+		Post("/puzzle/", (*Context).PuzzleUpload)
+	http.ListenAndServe("localhost:4000", router)
 }
 
