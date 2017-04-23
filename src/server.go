@@ -78,7 +78,7 @@ func (c *Context) OpenResources(rw web.ResponseWriter, req *web.Request, next we
 func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 
 	req.ParseMultipartForm(32 << 20)
-	file, header, err := req.FormFile("file")
+	file, _, err := req.FormFile("file")
 	if err != nil {
 		panic("no file found")
 	}
