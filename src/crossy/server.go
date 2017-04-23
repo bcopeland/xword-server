@@ -18,14 +18,16 @@ package main
 //    --> respond with current fill
 
 import (
-	"crypto/rand"
+	"./conf"
+	"./db"
+	"./formats"
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/gocraft/web"
-	"io"
-	"mime/multipart"
+	"io/ioutil"
 	"net/http"
-	"os"
 	"strings"
 )
 
@@ -34,20 +36,23 @@ type User struct {
 }
 
 type Context struct {
-	user User
-}
-
-type Puzzle struct {
+	user   User
+	config conf.Config
+	db     *sql.DB
 }
 
 type PuzzleUploadResponse struct {
 	Id string
 }
 
-type SolveGetResponse struct {
-	Id      string
-	Version int
-	Fill    []string
+func (c *Context) Init(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
+	config, err := conf.LoadConfig("config")
+	if err != nil {
+		panic(err)
+	}
+	c.config = config
+
+	next(rw, req)
 }
 
 func (c *Context) Auth(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
@@ -60,75 +65,41 @@ func (c *Context) Headers(rw web.ResponseWriter, req *web.Request, next web.Next
 	next(rw, req)
 }
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-
-func randString(n int) string {
-	rbytes := make([]byte, n)
-	_, err := rand.Read(rbytes)
+func (c *Context) OpenResources(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
+	db, err := sql.Open("mysql", c.config.DBUri)
+	defer db.Close()
 	if err != nil {
-		panic("rand")
+		panic(err)
 	}
-
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[int(rbytes[i])%len(letters)]
-	}
-	return string(b)
-}
-
-func SaveFile(file multipart.File) (id string) {
-
-	id = randString(8)
-
-	defer file.Close()
-	f, err := os.OpenFile("./store/"+id+".puz", os.O_WRONLY|os.O_CREATE, 0600)
-	if err != nil {
-		panic("could not save file")
-	}
-
-	defer f.Close()
-	io.Copy(f, file)
-	return id
-}
-
-func LoadFile(id string) (file *os.File) {
-	// TODO check id for sanity
-	f, err := os.OpenFile("./store/"+id+".puz", os.O_RDONLY, 0)
-	if err != nil {
-		panic("could not load file")
-	}
-	return f
-}
-
-func (c *Context) SolveGet(rw web.ResponseWriter, req *web.Request) {
-	id := req.PathParams["id"]
-	r := SolveGetResponse{}
-	r.Id = id
-	r.Version = 2
-	r.Fill = make([]string, 21)
-	for i := range r.Fill {
-		r.Fill[i] = strings.Repeat(" ", 21)
-	}
-	r.Fill[0] = "abcde#xxxx#yyyy#zzzzz"
-	b, err := json.Marshal(r)
-	if err != nil {
-		panic("cannot generate json response")
-	}
-	fmt.Fprint(rw, string(b))
+	c.db = db
+	next(rw, req)
 }
 
 func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 
 	req.ParseMultipartForm(32 << 20)
 	file, header, err := req.FormFile("file")
-	fmt.Printf("puz: %s\n", header.Filename)
 	if err != nil {
 		panic("no file found")
 	}
+	b, err := ioutil.ReadAll(file)
+	if err != nil {
+		panic(err)
+	}
 
-	id := SaveFile(file)
+	p, err := formats.NewXPF().Parse(b)
+	if err != nil {
+		panic("could not parse file")
+	}
+
+	session := db.NewSession(c.db)
+	id, err := session.PuzzleCreate(&p)
+	if err != nil {
+		panic(err)
+	}
+
 	resp := PuzzleUploadResponse{Id: id}
-	b, err := json.Marshal(resp)
+	b, err = json.Marshal(resp)
 	if err != nil {
 		panic("cannot generate json response")
 	}
@@ -137,12 +108,123 @@ func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 
 func (c *Context) PuzzleGet(rw web.ResponseWriter, req *web.Request) {
 	id := req.PathParams["id"]
-	file := LoadFile(id)
-	defer file.Close()
-	_, err := io.Copy(rw, file)
+	session := db.NewSession(c.db)
+
+	p, err := session.PuzzleGetById(id)
 	if err != nil {
-		panic("cannot load file")
+		panic(err)
 	}
+	b, err := formats.NewXPF().Format(p)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprint(rw, string(b))
+}
+
+func (c *Context) SolutionStart(rw web.ResponseWriter, req *web.Request) {
+	var request struct {
+		PuzzleId string
+	}
+	decoder := json.NewDecoder(req.Body)
+	err := decoder.Decode(&request)
+	if err != nil {
+		panic(err)
+	}
+
+	session := db.NewSession(c.db)
+	p, err := session.PuzzleGetById(request.PuzzleId)
+	if err != nil {
+		panic(err)
+	}
+
+	s := db.Solution{
+		PuzzleId: p.Id,
+		Version:  1,
+		Grid:     strings.Repeat(" ", p.Width*p.Height)}
+
+	id, err := session.SolutionCreate(&s)
+	if err != nil {
+		panic(err)
+	}
+
+	s.Id = id
+	b, err := json.Marshal(s)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprint(rw, string(b))
+}
+
+func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
+	id := req.PathParams["id"]
+
+	var request struct {
+		Version int
+		Grid    string
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	err := decoder.Decode(&request)
+	if err != nil {
+		panic(err)
+	}
+	defer req.Body.Close()
+
+	session := db.NewSession(c.db)
+
+	that, err := session.SolutionGetById(id)
+	if err != nil {
+		panic(err)
+	}
+
+	if len(that.Grid) != len(request.Grid) {
+		panic(err)
+	}
+
+	changed := false
+	for cellid := 0; cellid < len(request.Grid); cellid++ {
+		// unchanged
+		if request.Grid[cellid] == '-' {
+			continue
+		}
+		// skip the change if the version in the table is newer than
+		// the version here and if the previous cell is not blank,
+		// to prevent overwriting newer stuff with old stuff
+		if that.Version > request.Version && that.Grid[cellid] != ' ' {
+			continue
+		}
+		that.Grid = that.Grid[0:cellid] + request.Grid[cellid:cellid+1] + that.Grid[cellid+1:]
+		changed = true
+	}
+	if changed {
+		that.Version = request.Version + 1
+		that, err = session.SolutionUpdate(that)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	b, err := json.Marshal(that)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprint(rw, string(b))
+}
+
+func (c *Context) SolutionGet(rw web.ResponseWriter, req *web.Request) {
+	id := req.PathParams["id"]
+
+	session := db.NewSession(c.db)
+
+	p, err := session.SolutionGetById(id)
+	if err != nil {
+		panic(err)
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprint(rw, string(b))
 }
 
 func (c *Context) PuzzleUploadGet(rw web.ResponseWriter, req *web.Request) {
@@ -154,11 +236,15 @@ func main() {
 	router := web.New(Context{}).
 		Middleware(web.LoggerMiddleware).
 		Middleware(web.ShowErrorsMiddleware).
+		Middleware((*Context).Init).
 		Middleware((*Context).Auth).
 		Middleware((*Context).Headers).
+		Middleware((*Context).OpenResources).
 		Get("/puzzle/:id", (*Context).PuzzleGet).
 		Get("/puzzle/upload", (*Context).PuzzleUploadGet).
-		Get("/solve/:id", (*Context).SolveGet).
+		Get("/solution/:id", (*Context).SolutionGet).
+		Post("/solution", (*Context).SolutionStart).
+		Post("/solution/:id", (*Context).SolutionPost).
 		Post("/puzzle/", (*Context).PuzzleUpload)
 	http.ListenAndServe("localhost:4000", router)
 }
