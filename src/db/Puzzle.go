@@ -24,6 +24,7 @@ func (session *Session) PuzzleCreate(p *puzzle.Puzzle) (id string, err error) {
 	id = fmt.Sprintf("%x", sha256.Sum256([]byte(gridstr)))
 
 	// delete any existing data (cascades)
+	// unfortunately this deletes all solutions too. hrm.
 	stmt, err := tx.Prepare(`delete from puzzle where id=?`)
 	if err != nil {
 		return "", err

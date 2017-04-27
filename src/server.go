@@ -28,7 +28,6 @@ import (
 	"github.com/gocraft/web"
 	"io/ioutil"
 	"net/http"
-	"strings"
 )
 
 type User struct {
@@ -137,18 +136,34 @@ func (c *Context) SolutionStart(rw web.ResponseWriter, req *web.Request) {
 		panic(err)
 	}
 
+	entries := make([]db.Entry, p.Width*p.Height)
+	for i := 0; i < p.Width*p.Height; i++ {
+		entries[i].Ordinal = i
+		entries[i].Value = " "
+	}
 	s := db.Solution{
 		PuzzleId: p.Id,
 		Version:  1,
-		Grid:     strings.Repeat(" ", p.Width*p.Height)}
+		Entries:  entries}
 
 	id, err := session.SolutionCreate(&s)
 	if err != nil {
 		panic(err)
 	}
 
-	s.Id = id
-	b, err := json.Marshal(s)
+	var response struct {
+		Id       string
+		PuzzleId string
+		Version  int
+		Grid     string
+	}
+
+	response.Id = id
+	response.PuzzleId = p.Id
+	response.Version = s.Version
+	response.Grid = s.GridString()
+
+	b, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
 	}
@@ -162,6 +177,10 @@ func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
 		Version int
 		Grid    string
 	}
+	var response struct {
+		Version int
+		Grid    string
+	}
 
 	decoder := json.NewDecoder(req.Body)
 	err := decoder.Decode(&request)
@@ -172,39 +191,38 @@ func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
 
 	session := db.NewSession(c.db)
 
-	that, err := session.SolutionGetById(id)
+	solution, err := session.SolutionGetById(id)
 	if err != nil {
 		panic(err)
 	}
 
-	if len(that.Grid) != len(request.Grid) {
+	if len(solution.Entries) != len(request.Grid) {
 		panic(err)
 	}
 
+	nextVer := solution.Version + 1
 	changed := false
-	for cellid := 0; cellid < len(request.Grid); cellid++ {
-		// unchanged
-		if request.Grid[cellid] == '-' {
+	for i := 0; i < len(request.Grid); i++ {
+		// only accept newer cells
+		if solution.Entries[i].Version > request.Version {
 			continue
 		}
-		// skip the change if the version in the table is newer than
-		// the version here and if the previous cell is not blank,
-		// to prevent overwriting newer stuff with old stuff
-		if that.Version > request.Version && that.Grid[cellid] != ' ' {
-			continue
-		}
-		that.Grid = that.Grid[0:cellid] + request.Grid[cellid:cellid+1] + that.Grid[cellid+1:]
+
+		solution.Entries[i].Value = string(request.Grid[i])
+		solution.Entries[i].Version = nextVer
 		changed = true
 	}
 	if changed {
-		that.Version = request.Version + 1
-		that, err = session.SolutionUpdate(that)
+		solution.Version = nextVer
+		solution, err = session.SolutionUpdate(solution)
 		if err != nil {
 			panic(err)
 		}
 	}
+	response.Version = solution.Version
+	response.Grid = solution.GridString()
 
-	b, err := json.Marshal(that)
+	b, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
 	}
@@ -214,13 +232,22 @@ func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
 func (c *Context) SolutionGet(rw web.ResponseWriter, req *web.Request) {
 	id := req.PathParams["id"]
 
+	var response struct {
+		PuzzleId string
+		Version  int
+		Grid     string
+	}
 	session := db.NewSession(c.db)
 
-	p, err := session.SolutionGetById(id)
+	s, err := session.SolutionGetById(id)
 	if err != nil {
 		panic(err)
 	}
-	b, err := json.Marshal(p)
+	response.PuzzleId = s.PuzzleId
+	response.Version = s.Version
+	response.Grid = s.GridString()
+
+	b, err := json.Marshal(response)
 	if err != nil {
 		panic(err)
 	}

@@ -1,10 +1,17 @@
 package db
 
+type Entry struct {
+	SolutionId string
+	Ordinal    int
+	Version    int
+	Value      string
+}
+
 type Solution struct {
 	Id       string
 	PuzzleId string
 	Version  int
-	Grid     string
+	Entries  []Entry
 }
 
 func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
@@ -13,7 +20,7 @@ func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
 		return "", err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare("insert into solution (id, puzzle_id) values (?, ?)")
+	stmt, err := tx.Prepare("insert into solution (id, puzzle_id, version) values (?, ?, ?)")
 	if err != nil {
 		return "", err
 	}
@@ -21,7 +28,7 @@ func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
 	// try new random ids, abort if we can't get a unique one
 	for i := 0; i < 5; i++ {
 		id = session.RandString(16)
-		_, err := stmt.Exec(id, s.PuzzleId)
+		_, err := stmt.Exec(id, s.PuzzleId, s.Version)
 		if err == nil {
 			break
 		}
@@ -30,17 +37,17 @@ func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
 		return "", err
 	}
 
-	// now update the solution
-	stmt, err = tx.Prepare(`update solution set version=1, grid=? where id=?`)
+	// now create the grid entries
+	stmt, err = tx.Prepare(`insert into entry (solution_id, ordinal, version, value) values (?,?,?,?)`)
 	if err != nil {
 		return "", err
 	}
-
-	_, err = stmt.Exec(s.Grid, id)
-	if err != nil {
-		return "", err
+	for i := 0; i < len(s.Entries); i++ {
+		_, err = stmt.Exec(id, i, 0, s.Entries[i].Value)
+		if err != nil {
+			return "", err
+		}
 	}
-
 	tx.Commit()
 	return id, nil
 }
@@ -53,8 +60,33 @@ func (session *Session) SolutionGetById(id string) (s Solution, err error) {
 	defer tx.Rollback()
 
 	err = tx.QueryRow(
-		`select id, puzzle_id, version, grid from solution where id=?`, id).Scan(
-		&s.Id, &s.PuzzleId, &s.Version, &s.Grid)
+		`select id, puzzle_id, version from solution where id=?`, id).Scan(
+		&s.Id, &s.PuzzleId, &s.Version)
+	if err != nil {
+		return s, err
+	}
+
+	rows, err := tx.Query(
+		`select solution_id, ordinal, version, value from entry where solution_id=? order by ordinal`, id)
+	if err != nil {
+		return s, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var entry Entry
+		err := rows.Scan(
+			&entry.SolutionId,
+			&entry.Ordinal,
+			&entry.Version,
+			&entry.Value)
+		if err != nil {
+			return s, err
+		}
+		s.Entries = append(s.Entries, entry)
+	}
+	if err = rows.Err(); err != nil {
+		return s, err
+	}
 
 	return s, err
 }
@@ -67,17 +99,36 @@ func (session *Session) SolutionUpdate(s Solution) (out Solution, err error) {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-        update solution set version=?, grid=? where id=?
+        update solution set version=? where id=?
     `)
 	if err != nil {
 		return s, err
 	}
 
-	_, err = stmt.Exec(s.Version, s.Grid, s.Id)
+	_, err = stmt.Exec(s.Version, s.Id)
 	if err != nil {
 		return s, err
+	}
+	stmt, err = tx.Prepare(
+		`update entry set version=?, value=? where solution_id=? and ordinal=?`)
+	if err != nil {
+		return s, err
+	}
+	for i := 0; i < len(s.Entries); i++ {
+		_, err = stmt.Exec(s.Entries[i].Version, s.Entries[i].Value, s.Id, i)
+		if err != nil {
+			return s, err
+		}
 	}
 
 	tx.Commit()
 	return s, nil
+}
+
+func (s *Solution) GridString() string {
+	grid := ""
+	for i := 0; i < len(s.Entries); i++ {
+		grid += s.Entries[i].Value
+	}
+	return grid
 }

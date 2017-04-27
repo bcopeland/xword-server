@@ -52,19 +52,19 @@ create table shade (
     constraint foreign key (puzzle_id) references puzzle (id) on delete cascade on update cascade
 ) engine=InnoDB default charset=utf8;
 
-create table shade (
-    id bigint not null auto_increment primary key,
-    puzzle_id varchar(64) not null,
-    row int not null default 0,
-    col int not null default 0,
-    color varchar(20) not null default '',
-    constraint foreign key (puzzle_id) references puzzle (id) on delete cascade on update cascade
-) engine=InnoDB default charset=utf8;
-
 create table solution (
-    id varchar(64) not null,
+    id varchar(64) not null primary key,
     puzzle_id varchar(64) not null,
     version int not null default 0,
     grid text not null default '',
     constraint foreign key (puzzle_id) references puzzle (id) on delete cascade on update cascade
+) engine=InnoDB default charset=utf8;
+
+create table entry (
+    solution_id varchar(64) not null,
+    ordinal int not null default 0,
+    version int not null default 0,
+    value varchar(30) not null default '',
+    primary key (solution_id, ordinal),
+    constraint foreign key(solution_id) references solution (id) on delete cascade on update cascade
 ) engine=InnoDB default charset=utf8;
