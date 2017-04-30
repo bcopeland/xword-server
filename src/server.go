@@ -270,7 +270,7 @@ func (c *Context) PuzzleUploadGet(rw web.ResponseWriter, req *web.Request) {
 func main() {
 	router := web.New(Context{}).
 		Middleware(web.LoggerMiddleware).
-		Middleware(web.ShowErrorsMiddleware).
+		// Middleware(web.ShowErrorsMiddleware).
 		Middleware((*Context).Init).
 		Middleware((*Context).Auth).
 		Middleware((*Context).Headers).
