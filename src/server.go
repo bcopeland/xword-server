@@ -21,6 +21,7 @@ import (
 	"./conf"
 	"./db"
 	"./formats"
+	"./puzzle"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -86,7 +87,14 @@ func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 		panic(err)
 	}
 
-	p, err := formats.NewXPF().Parse(b)
+	var p puzzle.Puzzle
+	formats := [...]formats.Format{formats.NewPuz(), formats.NewXPF()}
+	for _, f := range formats {
+		p, err = f.Parse(b)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		panic("could not parse file")
 	}

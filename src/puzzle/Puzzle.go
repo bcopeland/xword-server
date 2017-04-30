@@ -1,5 +1,10 @@
 package puzzle
 
+const (
+	ACROSS = 'A'
+	DOWN = 'D'
+)
+
 type Circle struct {
 	Row int
 	Col int
