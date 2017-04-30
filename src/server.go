@@ -215,6 +215,9 @@ func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
 		if solution.Entries[i].Version > request.Version {
 			continue
 		}
+		if solution.Entries[i].Value == string(request.Grid[i]) {
+			continue
+		}
 
 		solution.Entries[i].Value = string(request.Grid[i])
 		solution.Entries[i].Version = nextVer
