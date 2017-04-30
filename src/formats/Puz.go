@@ -91,8 +91,8 @@ func (c *puz) numberGrid(grid []string, black uint8) (clues []puzzle.Clue) {
 					x + 1,
 					y + 1,
 					number,
-					c.gridAnswer(grid, x, y, black, puzzle.ACROSS),
 					"Across",
+					c.gridAnswer(grid, x, y, black, puzzle.ACROSS),
 					""}
 				clues = append(clues, clue)
 			}
@@ -101,12 +101,14 @@ func (c *puz) numberGrid(grid []string, black uint8) (clues []puzzle.Clue) {
 					x + 1,
 					y + 1,
 					number,
-					c.gridAnswer(grid, x, y, black, puzzle.DOWN),
 					"Down",
+					c.gridAnswer(grid, x, y, black, puzzle.DOWN),
 					""}
 				clues = append(clues, clue)
 			}
-			number++
+			if start_x || start_y {
+				number++
+			}
 		}
 	}
 	return clues

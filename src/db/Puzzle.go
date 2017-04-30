@@ -118,7 +118,7 @@ func (session *Session) PuzzleGetById(id string) (p puzzle.Puzzle, err error) {
 
 	rows, err := tx.Query(
 		`select row, col, number, direction, answer, text
-         from clue where puzzle_id=?`, id)
+         from clue where puzzle_id=? order by direction, number`, id)
 	if err != nil {
 		return p, err
 	}
