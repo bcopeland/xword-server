@@ -23,19 +23,28 @@ func (session *Session) PuzzleCreate(p *puzzle.Puzzle) (id string, err error) {
 	// clue sets
 	id = fmt.Sprintf("%x", sha256.Sum256([]byte(gridstr)))
 
-	// delete any existing data (cascades)
-	// unfortunately this deletes all solutions too. hrm.
-	stmt, err := tx.Prepare(`delete from puzzle where id=?`)
-	if err != nil {
-		return "", err
-	}
-	_, err = stmt.Exec(id)
+	// Delete any existing child data for this puzzle
+    // We don't delete the puzzle itself because we want to
+    // keep any solutions that already exist
+    childTables := [...]string{"clue", "rebus", "circle", "shade"}
+    for _, tbl := range childTables {
+        stmt, err := tx.Prepare(`delete from ` + tbl + ` where puzzle_id=?`)
+        if err != nil {
+            return "", err
+        }
+        _, err = stmt.Exec(id)
+    }
 
-	// now add the puzzle
-	stmt, err = tx.Prepare(`
+	// now add or update the puzzle
+	stmt, err := tx.Prepare(`
         insert into puzzle (id, type, title, author, editor, copyright,
         publisher, date, height, width, grid, notepad)
-        values (?,?,?,?,?,?,?,?,?,?,?,?)
+        values (?,?,?,?,?,?,?,?,?,?,?,?) on duplicate key update
+        type=VALUES(type), title=VALUES(title), author=VALUES(author),
+        editor=VALUES(editor), copyright=VALUES(copyright),
+        publisher=VALUES(publisher), date=VALUES(date),
+        height=VALUES(height), width=VALUES(width),
+        grid=VALUES(grid), notepad=VALUES(notepad)
     `)
 	if err != nil {
 		return "", err
