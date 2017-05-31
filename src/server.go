@@ -22,11 +22,14 @@ import (
 	"./db"
 	"./formats"
 	"./puzzle"
+	"./service"
+	"./ws"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gocraft/web"
+	"golang.org/x/net/websocket"
 	"io/ioutil"
 	"net/http"
 )
@@ -36,42 +39,17 @@ type User struct {
 }
 
 type Context struct {
-	user   User
-	config conf.Config
-	db     *sql.DB
+	user User
+	db   *sql.DB
 }
 
 type PuzzleUploadResponse struct {
 	Id string
 }
 
-func (c *Context) Init(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
-	config, err := conf.LoadConfig("config")
-	if err != nil {
-		panic(err)
-	}
-	c.config = config
-
-	next(rw, req)
-}
-
-func (c *Context) Auth(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
-	c.user.name = "bobc"
-	next(rw, req)
-}
-
 func (c *Context) Headers(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
+	// allow testing with localhost client
 	rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	next(rw, req)
-}
-
-func (c *Context) OpenResources(rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
-	db, err := sql.Open("mysql", c.config.DBUri)
-	defer db.Close()
-	if err != nil {
-		panic(err)
-	}
-	c.db = db
 	next(rw, req)
 }
 
@@ -178,68 +156,6 @@ func (c *Context) SolutionStart(rw web.ResponseWriter, req *web.Request) {
 	fmt.Fprint(rw, string(b))
 }
 
-func (c *Context) SolutionPost(rw web.ResponseWriter, req *web.Request) {
-	id := req.PathParams["id"]
-
-	var request struct {
-		Version int
-		Grid    string
-	}
-	var response struct {
-		Version int
-		Grid    string
-	}
-
-	decoder := json.NewDecoder(req.Body)
-	err := decoder.Decode(&request)
-	if err != nil {
-		panic(err)
-	}
-	defer req.Body.Close()
-
-	session := db.NewSession(c.db)
-
-	solution, err := session.SolutionGetById(id)
-	if err != nil {
-		panic(err)
-	}
-
-	if len(solution.Entries) != len(request.Grid) {
-		panic(err)
-	}
-
-	nextVer := solution.Version + 1
-	changed := false
-	for i := 0; i < len(request.Grid); i++ {
-		// only accept newer cells
-		if solution.Entries[i].Version > request.Version {
-			continue
-		}
-		if solution.Entries[i].Value == string(request.Grid[i]) {
-			continue
-		}
-
-		solution.Entries[i].Value = string(request.Grid[i])
-		solution.Entries[i].Version = nextVer
-		changed = true
-	}
-	if changed {
-		solution.Version = nextVer
-		solution, err = session.SolutionUpdate(solution)
-		if err != nil {
-			panic(err)
-		}
-	}
-	response.Version = solution.Version
-	response.Grid = solution.GridString()
-
-	b, err := json.Marshal(response)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Fprint(rw, string(b))
-}
-
 func (c *Context) SolutionGet(rw web.ResponseWriter, req *web.Request) {
 	id := req.PathParams["id"]
 
@@ -271,18 +187,34 @@ func (c *Context) PuzzleUploadGet(rw web.ResponseWriter, req *web.Request) {
 }
 
 func main() {
+	config, err := conf.LoadConfig("config")
+	if err != nil {
+		panic(err)
+	}
+	dbhandle, err := sql.Open("mysql", config.DBUri)
+	defer dbhandle.Close()
+	if err != nil {
+		panic(err)
+	}
+	session := db.NewSession(dbhandle)
+	wsServer := ws.NewServer(service.SolutionServiceNew(session))
+	go wsServer.Listen()
+
 	router := web.New(Context{}).
 		Middleware(web.LoggerMiddleware).
-		// Middleware(web.ShowErrorsMiddleware).
-		Middleware((*Context).Init).
+		Middleware(func(c *Context, rw web.ResponseWriter, req *web.Request, next web.NextMiddlewareFunc) {
+			c.db = dbhandle
+			next(rw, req)
+		}).
 		Middleware((*Context).Auth).
 		Middleware((*Context).Headers).
-		Middleware((*Context).OpenResources).
 		Get("/puzzle/:id", (*Context).PuzzleGet).
 		Get("/puzzle/upload", (*Context).PuzzleUploadGet).
 		Get("/solution/:id", (*Context).SolutionGet).
+		Get("/ws", func(rw web.ResponseWriter, req *web.Request) {
+			websocket.Handler(wsServer.OnConnected).ServeHTTP(rw, req.Request)
+		}).
 		Post("/solution", (*Context).SolutionStart).
-		Post("/solution/:id", (*Context).SolutionPost).
 		Post("/puzzle/", (*Context).PuzzleUpload)
 	http.ListenAndServe("localhost:4000", router)
 }
