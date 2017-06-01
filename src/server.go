@@ -206,7 +206,6 @@ func main() {
 			c.db = dbhandle
 			next(rw, req)
 		}).
-		Middleware((*Context).Auth).
 		Middleware((*Context).Headers).
 		Get("/puzzle/:id", (*Context).PuzzleGet).
 		Get("/puzzle/upload", (*Context).PuzzleUploadGet).
