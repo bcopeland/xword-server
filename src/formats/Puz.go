@@ -17,12 +17,16 @@ type section struct {
 
 func (c *puz) parseString(ofs int, data []byte) (s string, outofs int) {
 	var i int
+
+	// extract iso-8859-1 string, reencode as utf8
+	cp := make([]rune, 0, 80)
 	for i = ofs; i < len(data); i++ {
 		if data[i] == 0 {
 			break
 		}
+		cp = append(cp, rune(data[i]))
 	}
-	return string(data[ofs:i]), i + 1
+	return string(cp), i + 1
 }
 
 func (c *puz) parseSection(ofs int, data []byte) (s section, outofs int, err error) {
