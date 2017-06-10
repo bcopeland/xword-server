@@ -46,7 +46,7 @@ func (s *Server) Listen() {
 			}
 
 		case m := <-s.recv:
-			log.Println("< ", m)
+			log.Println("< client")
 			out, err := s.service.Update(m)
 			if err == nil {
 				for client, _ := range s.clients {

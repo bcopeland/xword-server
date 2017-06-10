@@ -1,14 +1,14 @@
 package db
 
 import (
-	"../puzzle"
+	"../model"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"strings"
 )
 
-func (session *Session) PuzzleCreate(p *puzzle.Puzzle) (id string, err error) {
+func (session *Session) PuzzleCreate(p *model.Puzzle) (id string, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {
 		return "", err
@@ -81,11 +81,24 @@ func (session *Session) PuzzleCreate(p *puzzle.Puzzle) (id string, err error) {
 		}
 	}
 
+	stmt, err = tx.Prepare(`
+        insert into circle (puzzle_id, row, col) values (?, ?, ?)
+    `)
+	if err != nil {
+		return "", err
+	}
+	for _, circle := range p.Circles {
+		_, err = stmt.Exec(id, circle.Row, circle.Col)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	tx.Commit()
 	return id, nil
 }
 
-func (session *Session) PuzzleGetById(id string) (p puzzle.Puzzle, err error) {
+func (session *Session) PuzzleGetById(id string) (p model.Puzzle, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {
 		return p, err
@@ -134,7 +147,7 @@ func (session *Session) PuzzleGetById(id string) (p puzzle.Puzzle, err error) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var clue puzzle.Clue
+		var clue model.Clue
 		var direction int = 0
 		err := rows.Scan(
 			&clue.Row,
@@ -152,6 +165,27 @@ func (session *Session) PuzzleGetById(id string) (p puzzle.Puzzle, err error) {
 			clue.Direction = "Down"
 		}
 		p.Clues = append(p.Clues, clue)
+	}
+	if err = rows.Err(); err != nil {
+		return p, err
+	}
+
+	rows, err = tx.Query(
+		`select row, col from circle where puzzle_id=?`, id)
+	if err != nil {
+		return p, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var circle model.Circle
+		err := rows.Scan(
+			&circle.Row,
+			&circle.Col)
+		if err != nil {
+			return p, err
+		}
+		p.Circles = append(p.Circles, circle)
 	}
 	if err = rows.Err(); err != nil {
 		return p, err

@@ -2,6 +2,7 @@ package service
 
 import (
 	"../db"
+	"../model"
 	"errors"
 	"log"
 )
@@ -13,7 +14,7 @@ type SolutionService struct {
 type SolutionMutation struct {
 	Id      string
 	Version int
-	Grid    string
+	Entries []model.Entry
 }
 
 func SolutionServiceNew(session *db.Session) (out *SolutionService) {
@@ -27,23 +28,24 @@ func (s *SolutionService) Update(u *SolutionMutation) (out *SolutionMutation, er
 		return out, err
 	}
 
-	if len(solution.Entries) != len(u.Grid) {
+	if len(solution.Entries) != len(u.Entries) {
 		return out, errors.New("Updated grid length does not match puzzle")
 	}
 
 	nextVer := solution.Version + 1
 	changed := false
-	for i := 0; i < len(u.Grid); i++ {
+	for i := 0; i < len(u.Entries); i++ {
 		// only accept newer cells
-		if solution.Entries[i].Version > u.Version {
+		if solution.Entries[i].Version > u.Entries[i].Version {
 			continue
 		}
-		if solution.Entries[i].Value == string(u.Grid[i]) {
+		if solution.Entries[i].Value == u.Entries[i].Value {
 			continue
 		}
 
-		solution.Entries[i].Value = string(u.Grid[i])
-		solution.Entries[i].Version = nextVer
+	    log.Printf("update : %d version %d value %s\n", i, u.Entries[i].Version, u.Entries[i].Value)
+		solution.Entries[i].Value = u.Entries[i].Value
+		solution.Entries[i].Version = u.Entries[i].Version
 		changed = true
 	}
 	if changed {
@@ -53,11 +55,9 @@ func (s *SolutionService) Update(u *SolutionMutation) (out *SolutionMutation, er
 			return out, err
 		}
 	}
-	log.Printf("changed : %d version %d\n", changed, nextVer)
 	out = &SolutionMutation{
 		u.Id,
 		solution.Version,
-		solution.GridString(),
-	}
+		solution.Entries}
 	return out, nil
 }

@@ -1,7 +1,7 @@
 package formats
 
 import (
-	"../puzzle"
+	"../model"
 	"encoding/binary"
 	"encoding/xml"
 	"errors"
@@ -37,10 +37,10 @@ func (c *puz) parseSection(ofs int, data []byte) (s section, outofs int, err err
 	// checksum := binary.LittleEndian.Uint16(data[ofs:ofs+2])
 	ofs += 2
 
-	if length < len(data)-ofs {
+	if length > len(data)-ofs {
 		return s, ofs, errors.New("invalid section: too short length")
 	}
-	return section{name, data[ofs : ofs+length]}, ofs, nil
+	return section{name, data[ofs : ofs+length]}, ofs+length, nil
 }
 
 func (c *puz) gridAnswer(grid []string, x int, y int, black uint8, direction uint8) (str string) {
@@ -52,7 +52,7 @@ func (c *puz) gridAnswer(grid []string, x int, y int, black uint8, direction uin
 	width := len(grid[0])
 
 	xinc, yinc := 0, 0
-	if direction == puzzle.ACROSS {
+	if direction == model.ACROSS {
 		xinc = 1
 	} else {
 		yinc = 1
@@ -66,7 +66,7 @@ func (c *puz) gridAnswer(grid []string, x int, y int, black uint8, direction uin
 	return str
 }
 
-func (c *puz) numberGrid(grid []string, black uint8) (clues []puzzle.Clue) {
+func (c *puz) numberGrid(grid []string, black uint8) (clues []model.Clue) {
 
 	if len(grid) == 0 {
 		return clues
@@ -87,22 +87,22 @@ func (c *puz) numberGrid(grid []string, black uint8) (clues []puzzle.Clue) {
 				(y+1 < height && grid[y+1][x] != black))
 
 			if start_x {
-				clue := puzzle.Clue{
+				clue := model.Clue{
 					x + 1,
 					y + 1,
 					number,
 					"Across",
-					c.gridAnswer(grid, x, y, black, puzzle.ACROSS),
+					c.gridAnswer(grid, x, y, black, model.ACROSS),
 					""}
 				clues = append(clues, clue)
 			}
 			if start_y {
-				clue := puzzle.Clue{
+				clue := model.Clue{
 					x + 1,
 					y + 1,
 					number,
 					"Down",
-					c.gridAnswer(grid, x, y, black, puzzle.DOWN),
+					c.gridAnswer(grid, x, y, black, model.DOWN),
 					""}
 				clues = append(clues, clue)
 			}
@@ -114,14 +114,14 @@ func (c *puz) numberGrid(grid []string, black uint8) (clues []puzzle.Clue) {
 	return clues
 }
 
-func (c *puz) Format(p puzzle.Puzzle) (data []byte, err error) {
+func (c *puz) Format(p model.Puzzle) (data []byte, err error) {
 	var doc = Puzzles{}
-	doc.Puzzles = make([]puzzle.Puzzle, 1)
+	doc.Puzzles = make([]model.Puzzle, 1)
 	doc.Puzzles[0] = p
 	return xml.Marshal(doc)
 }
 
-func (c *puz) Parse(data []byte) (p puzzle.Puzzle, err error) {
+func (c *puz) Parse(data []byte) (p model.Puzzle, err error) {
 	filelen := len(data)
 
 	if filelen < 0x34 {
@@ -163,10 +163,28 @@ func (c *puz) Parse(data []byte) (p puzzle.Puzzle, err error) {
 		clue, ofs = c.parseString(ofs, data)
 		clues = append(clues, clue)
 	}
-	if data[ofs] != 0 {
-		return p, errors.New("missing null terminator after clues")
+
+	_, ofs = c.parseString(ofs, data)
+
+	// addl sections - of note, GEXT includes circle flags
+	for {
+		section, out_ofs, err := c.parseSection(ofs, data)
+		if err != nil {
+			break
+		}
+		if section.name == "GEXT" {
+			for i := range(section.data) {
+				b := section.data[i]
+				if (b & 0x80) != 0 {
+					y := (i / p.Width) + 1;
+					x := (i % p.Width) + 1;
+					c := model.Circle{ y, x }
+					p.Circles = append(p.Circles, c)
+				}
+			}
+		}
+		ofs = out_ofs
 	}
-	ofs += 1
 
 	p.Clues = c.numberGrid(p.Grid, '.')
 	for i := 0; i < len(p.Clues); i++ {

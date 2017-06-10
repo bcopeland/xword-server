@@ -1,4 +1,4 @@
-package puzzle
+package model
 
 const (
 	ACROSS = 'A'
@@ -6,14 +6,14 @@ const (
 )
 
 type Circle struct {
-	Row int
-	Col int
+	Row int `xml:"Row,attr"`
+	Col int `xml:"Col,attr"`
 }
 
 type Shade struct {
-	Row   int
-	Col   int
-	Color string
+	Row   int   `xml:"Row,attr"`
+	Col   int   `xml:"Col,attr"`
+	Color string    `xml:"Color,attr"`
 }
 
 type Rebus struct {

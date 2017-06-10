@@ -1,20 +1,8 @@
 package db
 
-type Entry struct {
-	SolutionId string
-	Ordinal    int
-	Version    int
-	Value      string
-}
+import "../model"
 
-type Solution struct {
-	Id       string
-	PuzzleId string
-	Version  int
-	Entries  []Entry
-}
-
-func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
+func (session *Session) SolutionCreate(s *model.Solution) (id string, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {
 		return "", err
@@ -52,7 +40,7 @@ func (session *Session) SolutionCreate(s *Solution) (id string, err error) {
 	return id, nil
 }
 
-func (session *Session) SolutionGetById(id string) (s Solution, err error) {
+func (session *Session) SolutionGetById(id string) (s model.Solution, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {
 		return s, err
@@ -73,7 +61,7 @@ func (session *Session) SolutionGetById(id string) (s Solution, err error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var entry Entry
+		var entry model.Entry
 		err := rows.Scan(
 			&entry.SolutionId,
 			&entry.Ordinal,
@@ -91,7 +79,7 @@ func (session *Session) SolutionGetById(id string) (s Solution, err error) {
 	return s, err
 }
 
-func (session *Session) SolutionUpdate(s Solution) (out Solution, err error) {
+func (session *Session) SolutionUpdate(s model.Solution) (out model.Solution, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {
 		return s, err
@@ -123,12 +111,4 @@ func (session *Session) SolutionUpdate(s Solution) (out Solution, err error) {
 
 	tx.Commit()
 	return s, nil
-}
-
-func (s *Solution) GridString() string {
-	grid := ""
-	for i := 0; i < len(s.Entries); i++ {
-		grid += s.Entries[i].Value
-	}
-	return grid
 }

@@ -51,10 +51,10 @@ func (c *Client) readerThread() {
 		c.conn.Close()
 	}()
 	for {
-		log.Println("getting msg")
+		log.Println("reading client msg...")
 		msg := service.SolutionMutation{}
 		err := websocket.JSON.Receive(c.conn, &msg)
-		log.Println("msg rcvd: ", msg, err)
+		log.Println("msg rcvd")
 		if err == io.EOF {
 			return
 		} else if err == nil {
@@ -68,11 +68,11 @@ func (c *Client) writerThread() {
 		select {
 		case msg, ok := <-c.send:
 			if !ok {
-				break
+				return
 			}
-			log.Println("Got update ", c.id, " ", msg)
+			log.Println("Got update for ", c.id)
 			if c.id == msg.Id {
-				log.Println("> ", msg)
+				log.Println("> client")
 				websocket.JSON.Send(c.conn, msg)
 			}
 		}

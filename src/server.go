@@ -21,7 +21,7 @@ import (
 	"./conf"
 	"./db"
 	"./formats"
-	"./puzzle"
+	"./model"
 	"./service"
 	"./ws"
 	"database/sql"
@@ -65,8 +65,8 @@ func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 		panic(err)
 	}
 
-	var p puzzle.Puzzle
-	formats := [...]formats.Format{formats.NewPuz(), formats.NewXPF()}
+	var p model.Puzzle
+	formats := [...]formats.Format{formats.NewXPF(), formats.NewPuz()}
 	for _, f := range formats {
 		p, err = f.Parse(b)
 		if err == nil {
@@ -74,7 +74,7 @@ func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
 		}
 	}
 	if err != nil {
-		panic("could not parse file")
+		panic(err)
 	}
 
 	session := db.NewSession(c.db)
@@ -122,12 +122,12 @@ func (c *Context) SolutionStart(rw web.ResponseWriter, req *web.Request) {
 		panic(err)
 	}
 
-	entries := make([]db.Entry, p.Width*p.Height)
+	entries := make([]model.Entry, p.Width*p.Height)
 	for i := 0; i < p.Width*p.Height; i++ {
 		entries[i].Ordinal = i
 		entries[i].Value = " "
 	}
-	s := db.Solution{
+	s := model.Solution{
 		PuzzleId: p.Id,
 		Version:  1,
 		Entries:  entries}
