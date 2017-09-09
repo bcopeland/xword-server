@@ -53,3 +53,4 @@ type Puzzle struct {
 
 	Notepad string
 }
+

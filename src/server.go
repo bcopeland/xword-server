@@ -2,20 +2,9 @@ package main
 
 // version 1:
 //  no auth
-//  fetching /puzzle/id gets puz-format fill - DONE
-//  server parses puz format into something more reasonable
-//  fetching /solve/id gets current solution
-//    fetch anything works DONE
-//    solution saved in backend store
-//  anyone can post /solve/
-//  database as backend store
 //
-//  bobcopeland.com/crosswords/xyzzy
-//   --> embeds xwordjs with id=xyzzy (send in uri for now) DONE
-//   --> xwordjs periodically fetches /solve/xyzzy DONE
-//   --> xwordjs periodically posts /solve/xyzzy for updates
-//   --> if first solver, start the clock
-//    --> respond with current fill
+// list endpoint
+// server-side timekeeping
 
 import (
 	"./conf"
@@ -51,6 +40,17 @@ func (c *Context) Headers(rw web.ResponseWriter, req *web.Request, next web.Next
 	// allow testing with localhost client
 	rw.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	next(rw, req)
+}
+
+func (c *Context) SolutionList(rw web.ResponseWriter, req *web.Request) {
+	session := db.NewSession(c.db)
+    resp, err := session.SolutionFind()
+
+	b, err := json.Marshal(resp)
+	if err != nil {
+		panic("cannot generate json response")
+	}
+	fmt.Fprint(rw, string(b))
 }
 
 func (c *Context) PuzzleUpload(rw web.ResponseWriter, req *web.Request) {
@@ -209,6 +209,7 @@ func main() {
 		Middleware((*Context).Headers).
 		Get("/puzzle/:id", (*Context).PuzzleGet).
 		Get("/puzzle/upload", (*Context).PuzzleUploadGet).
+		Get("/solution", (*Context).SolutionList).
 		Get("/solution/:id", (*Context).SolutionGet).
 		Get("/ws", func(rw web.ResponseWriter, req *web.Request) {
 			websocket.Handler(wsServer.OnConnected).ServeHTTP(rw, req.Request)

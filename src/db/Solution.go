@@ -2,6 +2,37 @@ package db
 
 import "../model"
 
+func (session *Session) SolutionFind() (ids []model.SolutionMetadata, err error) {
+	tx, err := session.db.Begin()
+	if err != nil {
+		return ids, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`select s.id, p.id, p.title, p.author from solution s join puzzle p on s.puzzle_id = p.id`)
+	if err != nil {
+		return ids, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var metadata model.SolutionMetadata
+		err := rows.Scan(
+			&metadata.Id,
+			&metadata.PuzzleId,
+			&metadata.Title,
+			&metadata.Author)
+		if err != nil {
+			return ids, err
+		}
+		ids = append(ids, metadata)
+	}
+	if err = rows.Err(); err != nil {
+		return ids, err
+	}
+
+    return ids, nil
+}
 func (session *Session) SolutionCreate(s *model.Solution) (id string, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {

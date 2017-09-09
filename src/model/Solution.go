@@ -14,6 +14,13 @@ type Solution struct {
 	Entries  []Entry
 }
 
+type SolutionMetadata struct {
+	Id        string
+	PuzzleId  string
+	Title     string
+	Author    string
+}
+
 func (s *Solution) GridString() string {
 	grid := ""
 	for i := 0; i < len(s.Entries); i++ {
