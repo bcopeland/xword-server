@@ -43,8 +43,12 @@ func (c *Context) Headers(rw web.ResponseWriter, req *web.Request, next web.Next
 }
 
 func (c *Context) SolutionList(rw web.ResponseWriter, req *web.Request) {
+
 	session := db.NewSession(c.db)
-    resp, err := session.SolutionFind()
+	resp, err := service.SolutionServiceNew(session).Find()
+	if err != nil {
+		panic("cannot load solutions")
+	}
 
 	b, err := json.Marshal(resp)
 	if err != nil {

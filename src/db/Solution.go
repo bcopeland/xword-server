@@ -33,6 +33,7 @@ func (session *Session) SolutionFind() (ids []model.SolutionMetadata, err error)
 
     return ids, nil
 }
+
 func (session *Session) SolutionCreate(s *model.Solution) (id string, err error) {
 	tx, err := session.db.Begin()
 	if err != nil {

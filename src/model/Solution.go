@@ -19,6 +19,7 @@ type SolutionMetadata struct {
 	PuzzleId  string
 	Title     string
 	Author    string
+	Progress  int
 }
 
 func (s *Solution) GridString() string {
